@@ -6,7 +6,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-notifip
-PKG_VERSION:=1.1.1
+PKG_VERSION:=1.1.2
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=NotifIP
@@ -18,7 +18,7 @@ define Package/luci-app-notifip
   CATEGORY:=LuCI
   SUBMENU:=3. Applications
   TITLE:=WAN IP change email notifier
-  DEPENDS:=+luci-base +msmtp +curl
+  DEPENDS:=+luci-base +msmtp +curl +jsonfilter
   PKGARCH:=all
 endef
 

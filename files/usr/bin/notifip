@@ -23,14 +23,27 @@ HOSTNAME=$(uci -q get system.@system[0].hostname 2>/dev/null)
 # Strip CR/LF to prevent mail header injection through hostname
 HOSTNAME=$(printf '%s' "$HOSTNAME" | tr -d '\r\n')
 
-mkdir -p "$STATE_DIR"
-# /var/lock may not exist on minimal builds; a failed `exec 9>` redirection
-# would silently kill the whole script, so make sure the dir is there.
-mkdir -p /var/lock 2>/dev/null
-touch "$STATE_FILE" "$LOG_FILE"
-chmod 600 "$STATE_FILE" "$LOG_FILE" 2>/dev/null
-# Tighten UCI config (contains SMTP password) — defensive on every run
-[ -f /etc/config/notifip ] && chmod 600 /etc/config/notifip 2>/dev/null
+# Create the state/log files ONLY if missing. Read-only subcommands (status,
+# log) are polled by the History tab every 30s — touch/chmod on every call would
+# needlessly rewrite inode metadata on the flash overlay. Creating on-demand and
+# chmod'ing only at creation keeps the read path write-free.
+ensure_files() {
+	[ -d "$STATE_DIR" ] || mkdir -p "$STATE_DIR"
+	[ -e "$STATE_FILE" ] || { : > "$STATE_FILE"; chmod 600 "$STATE_FILE" 2>/dev/null; }
+	[ -e "$LOG_FILE" ]   || { : > "$LOG_FILE";   chmod 600 "$LOG_FILE"   2>/dev/null; }
+}
+
+# Defensive hardening for write/send commands only (config holds the SMTP
+# password). Kept off the read path to avoid flash churn from chmod.
+harden_runtime() {
+	ensure_files
+	[ -f /etc/config/notifip ] && chmod 600 /etc/config/notifip 2>/dev/null
+	# /var/lock may be absent on minimal builds; a failed `exec 9>` redirection
+	# would otherwise silently kill the script.
+	mkdir -p /var/lock 2>/dev/null
+}
+
+ensure_files
 
 log_msg() { logger -t notifip "$*"; }
 
@@ -160,7 +173,10 @@ state_set() {
 	' "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
 }
 
-is_first_run_after_boot() { [ ! -f "$BOOT_MARKER" ]; }
+# Manual checks (check-now) set SUPPRESS_BOOT=1 so they neither trigger nor
+# consume boot-mail semantics, which belong to the automatic post-reboot run.
+SUPPRESS_BOOT=0
+is_first_run_after_boot() { [ "$SUPPRESS_BOOT" = "1" ] && return 1; [ ! -f "$BOOT_MARKER" ]; }
 mark_booted() { touch "$BOOT_MARKER"; }
 
 # Keep only state rows whose first column matches one of the given keys.
@@ -383,6 +399,7 @@ cmd_run() {
 	# misleading "router started" mail long after the actual reboot.
 	[ "$ENABLED" = "1" ] || { mark_booted; exit 0; }
 
+	harden_runtime
 	take_lock || exit 0
 	do_checks || log_msg "$CHECK_ERR"
 	mark_booted
@@ -390,6 +407,7 @@ cmd_run() {
 
 cmd_test_mail() {
 	load_config
+	harden_runtime
 	# Serialize against cron/hotplug runs (both touch /etc/msmtprc.notifip).
 	# Busybox flock has no -w (timeout), so retry a few times non-blocking.
 	if command -v flock >/dev/null 2>&1; then
@@ -464,17 +482,20 @@ cmd_log() {
 
 cmd_check_now() {
 	# Force a check regardless of the "enabled" flag — used by the LuCI button.
+	# A manual check must NOT consume the boot marker (that would suppress the
+	# legitimate boot mail if the user clicks before the first post-reboot run),
+	# nor send a boot mail itself — so suppress boot semantics for this run.
 	load_config
+	harden_runtime
+	SUPPRESS_BOOT=1
 	if ! take_lock; then
 		echo "BUSY (another notifip run in progress)"
 		return 1
 	fi
 	if do_checks; then
-		mark_booted
 		echo "OK"
 		return 0
 	fi
-	mark_booted
 	echo "${CHECK_ERR:-check failed}"
 	return 1
 }
