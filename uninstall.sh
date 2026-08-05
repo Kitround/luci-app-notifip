@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# NotifIP — manual uninstaller
+# luci-app-notifip — manual uninstaller
 #
 # Usage:
 #   ./uninstall.sh root@192.168.1.1            # default port 22
 #   ./uninstall.sh root@192.168.1.1 -p 2222
 #
 # Removes every file installed by install.sh. Does NOT remove dependencies
-# (msmtp, curl, jsonfilter, cron) since they may be used by other packages.
+# (msmtp, curl, jsonfilter, ca-bundle) since they may be used by other packages.
 
 set -eo pipefail
 
@@ -44,13 +44,15 @@ echo "==> Removing files …"
 ssh_cmd "$TARGET" '
 	rm -f  /usr/bin/notifip
 	rm -f  /etc/init.d/notifip
+	rm -f  /etc/uci-defaults/99-notifip
 	rm -f  /etc/hotplug.d/iface/30-notifip
+	rm -f  /lib/upgrade/keep.d/luci-app-notifip
 	rm -f  /usr/libexec/rpcd/luci.notifip
 	rm -f  /usr/share/luci/menu.d/luci-app-notifip.json
 	rm -f  /usr/share/rpcd/acl.d/luci-app-notifip.json
 	rm -rf /www/luci-static/resources/view/notifip
 	rm -rf /etc/notifip
-	rm -f  /etc/msmtprc.notifip
+	rm -f  /var/run/msmtp.notifip.conf /etc/msmtprc.notifip
 	rm -f  /tmp/msmtp.notifip.log /tmp/notifip.booted
 	rm -f  /etc/config/notifip
 	[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload 2>/dev/null || true

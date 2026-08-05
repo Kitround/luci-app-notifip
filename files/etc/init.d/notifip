@@ -1,19 +1,25 @@
 #!/bin/sh /etc/rc.common
+# SPDX-License-Identifier: Apache-2.0
+# /etc/rc.common already sources /lib/functions.sh (config_load, config_get).
 
 START=95
 STOP=10
 USE_PROCD=1
 
+# Anchored at end of line so a user cron entry that merely mentions "notifip"
+# in a comment is never deleted.
 CRON_TAG="# notifip"
+CRON_MATCH="# notifip$"
 SCRIPT=/usr/bin/notifip
 CRONFILE=/etc/crontabs/root
-
-. /lib/functions.sh
+MSMTPRC=/var/run/msmtp.notifip.conf
 
 apply_cron() {
 	local enabled interval
-	# Harden config file (contains SMTP password)
-	[ -f /etc/config/notifip ] && chmod 600 /etc/config/notifip 2>/dev/null
+
+	# Harden config file (contains the SMTP password)
+	[ -f /etc/config/notifip ] && chmod 0600 /etc/config/notifip 2>/dev/null
+
 	config_load notifip
 	config_get enabled  general enabled 0
 	config_get interval general interval 5
@@ -27,7 +33,7 @@ apply_cron() {
 	mkdir -p "$(dirname "$CRONFILE")"
 	touch "$CRONFILE"
 
-	sed -i "/$CRON_TAG/d" "$CRONFILE" 2>/dev/null
+	sed -i "/$CRON_MATCH/d" "$CRONFILE" 2>/dev/null
 
 	if [ "$enabled" = "1" ]; then
 		local cron_line
@@ -50,7 +56,8 @@ apply_cron() {
 }
 
 remove_cron() {
-	sed -i "/$CRON_TAG/d" "$CRONFILE" 2>/dev/null
+	[ -f "$CRONFILE" ] || return 0
+	sed -i "/$CRON_MATCH/d" "$CRONFILE" 2>/dev/null
 	[ -x /etc/init.d/cron ] && /etc/init.d/cron reload 2>/dev/null
 }
 
@@ -61,8 +68,9 @@ start_service() {
 
 stop_service() {
 	remove_cron
-	# Remove generated SMTP credentials file (recreated on next send)
-	rm -f /etc/msmtprc.notifip
+	# Remove the generated SMTP credentials file (recreated on next send).
+	# The /etc path is the pre-1.2.0 location, cleaned up here as well.
+	rm -f "$MSMTPRC" /etc/msmtprc.notifip
 }
 
 reload_service() {

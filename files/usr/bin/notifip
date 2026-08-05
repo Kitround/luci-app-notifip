@@ -1,7 +1,9 @@
 #!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
 # NotifIP — WAN IP change notifier
 # Subcommands:
 #   run        normal check cycle (default)
+#   check-now  forced check, ignores the "enabled" flag (LuCI button)
 #   test-mail  send a test email using current SMTP config
 #   status     print JSON status (current IP, last change, etc.)
 #   log        print JSON log of changes
@@ -12,7 +14,10 @@
 STATE_DIR=/etc/notifip
 STATE_FILE="$STATE_DIR/state"
 LOG_FILE="$STATE_DIR/changes.log"
-MSMTPRC=/etc/msmtprc.notifip
+# Generated on every send and holds the SMTP password: keep it in tmpfs, never
+# on flash. /var is a symlink to /tmp on OpenWrt.
+MSMTPRC=/var/run/msmtp.notifip.conf
+MSMTP_LOG=/tmp/msmtp.notifip.log
 BOOT_MARKER=/tmp/notifip.booted
 LOCK=/var/lock/notifip.lock
 LOG_MAX_LINES=500
@@ -34,10 +39,17 @@ ensure_files() {
 }
 
 # Defensive hardening for write/send commands only (config holds the SMTP
-# password). Kept off the read path to avoid flash churn from chmod.
+# password). chmod is issued only when the mode actually differs: an
+# unconditional chmod every 5 minutes dirties the flash overlay for nothing.
 harden_runtime() {
 	ensure_files
-	[ -f /etc/config/notifip ] && chmod 600 /etc/config/notifip 2>/dev/null
+	if [ -f /etc/config/notifip ]; then
+		# An unreadable/absent stat yields "" and falls through to chmod.
+		case "$(stat -c '%a' /etc/config/notifip 2>/dev/null)" in
+			600) ;;
+			*) chmod 0600 /etc/config/notifip 2>/dev/null ;;
+		esac
+	fi
 	# /var/lock may be absent on minimal builds; a failed `exec 9>` redirection
 	# would otherwise silently kill the script.
 	mkdir -p /var/lock 2>/dev/null
@@ -46,15 +58,6 @@ harden_runtime() {
 ensure_files
 
 log_msg() { logger -t notifip "$*"; }
-
-# JSON-escape a string argument: handles backslash, quote, tab, CR, LF.
-json_escape() {
-	# Order matters: escape backslash FIRST, then the rest.
-	# TAB via printf so the script survives editors that mangle literal tabs.
-	local tab; tab=$(printf '\t')
-	printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$tab/\\\\t/g" \
-		| tr '\r\n' ' ' | tr -d '\000-\010\013-\037'
-}
 
 log_change() {
 	# ts \t source \t iface \t old \t new \t notified
@@ -180,12 +183,24 @@ is_first_run_after_boot() { [ "$SUPPRESS_BOOT" = "1" ] && return 1; [ ! -f "$BOO
 mark_booted() { touch "$BOOT_MARKER"; }
 
 # Keep only state rows whose first column matches one of the given keys.
+# Runs on every cycle, so it must NOT rewrite the file when nothing changed:
+# the state lives on the flash overlay and a cron tick every 5 min would
+# otherwise mean ~100k needless writes a year.
 prune_state() {
 	local wanted="$1" tmp="$STATE_FILE.tmp"
-	awk -v wanted="$wanted" -F '\t' '
+	local current pruned
+	current=$(cat "$STATE_FILE" 2>/dev/null)
+	pruned=$(awk -v wanted="$wanted" -F '\t' '
 		BEGIN { n=split(wanted, arr, " "); for (i=1;i<=n;i++) if (arr[i]!="") keep[arr[i]]=1 }
 		$1 in keep { print }
-	' "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+	' "$STATE_FILE" 2>/dev/null)
+	[ "$pruned" = "$current" ] && return 0
+	if [ -n "$pruned" ]; then
+		printf '%s\n' "$pruned" > "$tmp"
+	else
+		: > "$tmp"
+	fi
+	mv "$tmp" "$STATE_FILE"
 }
 
 # --- mail ---
@@ -193,11 +208,11 @@ write_msmtprc() {
 	local tls starttls certcheck trust_file f
 	# Keep the msmtp log bounded (~50 KB): it lives in tmpfs (RAM) and grows
 	# on every send; a flapping line + long uptime would slowly eat memory.
-	local mlog=/tmp/msmtp.notifip.log msize
-	if [ -f "$mlog" ]; then
-		msize=$(wc -c < "$mlog" 2>/dev/null)
+	local msize
+	if [ -f "$MSMTP_LOG" ]; then
+		msize=$(wc -c < "$MSMTP_LOG" 2>/dev/null)
 		if [ "${msize:-0}" -gt 51200 ]; then
-			tail -c 20480 "$mlog" > "$mlog.tmp" && mv "$mlog.tmp" "$mlog"
+			tail -c 20480 "$MSMTP_LOG" > "$MSMTP_LOG.tmp" && mv "$MSMTP_LOG.tmp" "$MSMTP_LOG"
 		fi
 	fi
 	tls=on
@@ -217,6 +232,9 @@ write_msmtprc() {
 			break
 		fi
 	done
+	[ "$tls" = "off" ] || [ "$certcheck" = "on" ] || \
+		log_msg "WARNING: no CA bundle found, SMTP server certificate is NOT verified (install ca-bundle)"
+	mkdir -p "$(dirname "$MSMTPRC")" 2>/dev/null
 	umask 077
 	{
 		echo "defaults"
@@ -226,7 +244,7 @@ write_msmtprc() {
 		echo "tls_certcheck  $certcheck"
 		[ -n "$trust_file" ] && echo "tls_trust_file $trust_file"
 		echo "timeout        15"
-		echo "logfile        /tmp/msmtp.notifip.log"
+		echo "logfile        $MSMTP_LOG"
 	} > "$MSMTPRC"
 	cat >> "$MSMTPRC" <<EOF
 
@@ -258,7 +276,7 @@ send_mail() {
 		printf 'Content-Type: text/plain; charset=UTF-8\n'
 		printf 'Content-Transfer-Encoding: 8bit\n\n'
 		printf '%s\n' "$body"
-	} | msmtp -C "$MSMTPRC" -a notifip "$SMTP_TO" 2>>/tmp/msmtp.notifip.log
+	} | msmtp -C "$MSMTPRC" -a notifip "$SMTP_TO" 2>>"$MSMTP_LOG"
 }
 
 build_body() {
@@ -344,7 +362,7 @@ CHECK_ERR=""
 do_checks() {
 	CHECK_ERR=""
 	# Prune state rows that no longer match the configured mode/iface list.
-	local wanted_keys=""
+	local wanted_keys="" i
 	case "$MODE" in
 		public) wanted_keys="public" ;;
 		iface)  for i in $IFACE_LIST; do wanted_keys="$wanted_keys iface:$i"; done ;;
@@ -354,6 +372,7 @@ do_checks() {
 	case "$MODE" in
 		public)
 			[ -n "$SOURCE_LIST" ] || { CHECK_ERR="no source URL configured"; return 1; }
+			command -v curl >/dev/null 2>&1 || { CHECK_ERR="curl not installed"; return 1; }
 			local cand ip used confirm old
 			cand=$(detect_public_ip)
 			[ -n "$cand" ] || { CHECK_ERR="all sources failed"; return 1; }
@@ -371,19 +390,15 @@ do_checks() {
 			;;
 		iface)
 			[ -n "$IFACE_LIST" ] || { CHECK_ERR="no iface configured"; return 1; }
-			# trap restores globbing even on error/signal
-			trap 'set +f' EXIT INT TERM
-			set -f
+			local iface ifip
 			for iface in $IFACE_LIST; do
-				ip=$(detect_iface_ip "$iface")
-				if [ -z "$ip" ]; then
+				ifip=$(detect_iface_ip "$iface")
+				if [ -z "$ifip" ]; then
 					log_msg "$iface has no IPv4"
 					continue
 				fi
-				handle_observation "iface:$iface" "$iface" "$ip" "ubus"
+				handle_observation "iface:$iface" "$iface" "$ifip" "ubus"
 			done
-			set +f
-			trap - EXIT INT TERM
 			;;
 		*)
 			CHECK_ERR="unknown mode: $MODE"
@@ -401,14 +416,19 @@ cmd_run() {
 
 	harden_runtime
 	take_lock || exit 0
-	do_checks || log_msg "$CHECK_ERR"
-	mark_booted
+	# Only consume the boot marker once a cycle actually succeeded: at START=95
+	# the WAN is often still down, and marking then would swallow the boot mail.
+	if do_checks; then
+		mark_booted
+	else
+		log_msg "$CHECK_ERR"
+	fi
 }
 
 cmd_test_mail() {
 	load_config
 	harden_runtime
-	# Serialize against cron/hotplug runs (both touch /etc/msmtprc.notifip).
+	# Serialize against cron/hotplug runs (both write $MSMTPRC).
 	# Busybox flock has no -w (timeout), so retry a few times non-blocking.
 	if command -v flock >/dev/null 2>&1; then
 		exec 9>"$LOCK"
@@ -436,48 +456,56 @@ EOF
 		echo "OK"
 		return 0
 	fi
-	echo "FAIL (see /tmp/msmtp.notifip.log)"
+	echo "FAIL (see $MSMTP_LOG)"
 	return 1
 }
 
 cmd_status() {
 	load_config
-	# ENABLED / INTERVAL are coerced to 0/1 or integers in the load step;
-	# validate numerically and emit safe integers in JSON.
+	. /usr/share/libubox/jshn.sh
+	# ENABLED / INTERVAL come straight from UCI: validate before emitting them
+	# as JSON numbers.
 	local en="${ENABLED:-0}" iv="${INTERVAL:-5}"
 	case "$en" in 0|1) ;; *) en=0 ;; esac
 	case "$iv" in *[!0-9]*|"") iv=5 ;; esac
-	printf '{'
-	printf '"enabled":%s,'  "$en"
-	printf '"mode":"%s",'   "$(json_escape "$MODE")"
-	printf '"interval":%s,' "$iv"
-	printf '"state":['
-	local first=1 key ip ts
+	json_init
+	json_add_int    enabled  "$en"
+	json_add_string mode     "$MODE"
+	json_add_int    interval "$iv"
+	json_add_array  state
+	local key ip ts
 	while IFS='	' read -r key ip ts; do
 		[ -n "$key" ] || continue
-		[ $first -eq 1 ] || printf ','
-		first=0
-		printf '{"key":"%s","ip":"%s","since":"%s"}' \
-			"$(json_escape "$key")" "$(json_escape "$ip")" "$(json_escape "$ts")"
+		json_add_object
+		json_add_string key   "$key"
+		json_add_string ip    "$ip"
+		json_add_string since "$ts"
+		json_close_object
 	done < "$STATE_FILE"
-	printf ']}'
+	json_close_array
+	json_dump
 }
 
 cmd_log() {
+	. /usr/share/libubox/jshn.sh
 	# ubus/rpcd expects an object at the top level, not a bare array — wrap the
 	# entries so rpcd transports it as a valid blobmsg table.
-	printf '{"entries":['
-	local first=1 ts source iface old new notif
+	json_init
+	json_add_array entries
+	local ts source iface old new notif
 	while IFS='	' read -r ts source iface old new notif; do
 		[ -n "$ts" ] || continue
-		[ $first -eq 1 ] || printf ','
-		first=0
-		printf '{"ts":"%s","source":"%s","iface":"%s","old":"%s","new":"%s","notified":"%s"}' \
-			"$(json_escape "$ts")"     "$(json_escape "$source")" \
-			"$(json_escape "$iface")"  "$(json_escape "$old")"    \
-			"$(json_escape "$new")"    "$(json_escape "$notif")"
+		json_add_object
+		json_add_string ts       "$ts"
+		json_add_string source   "$source"
+		json_add_string iface    "$iface"
+		json_add_string old      "$old"
+		json_add_string new      "$new"
+		json_add_string notified "$notif"
+		json_close_object
 	done < "$LOG_FILE"
-	printf ']}'
+	json_close_array
+	json_dump
 }
 
 cmd_check_now() {

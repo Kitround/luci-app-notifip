@@ -1,0 +1,16 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Runs once, right after package install (and on first boot of a new image).
+# Deleted by the package manager once it exits 0.
+
+# The config holds the SMTP password in plaintext.
+chmod 0600 /etc/config/notifip 2>/dev/null
+
+# <= 1.1.2 wrote the generated msmtp config (password included) to flash.
+# 1.2.0 generates it in tmpfs instead — drop the stale copy.
+rm -f /etc/msmtprc.notifip
+
+# Pick up the new rpcd ACL and the luci.notifip plugin.
+/etc/init.d/rpcd reload >/dev/null 2>&1
+
+exit 0

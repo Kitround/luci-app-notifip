@@ -1,15 +1,10 @@
 {
 	"luci-app-notifip": {
-		"description": "Grant UCI and rpcd access for NotifIP",
+		"description": "Grant UCI and ubus access for NotifIP",
 		"read": {
 			"uci": [ "notifip" ],
 			"ubus": {
 				"luci.notifip": [ "status", "log" ]
-			},
-			"file": {
-				"/etc/notifip/changes.log": [ "read" ],
-				"/etc/notifip/state": [ "read" ],
-				"/tmp/msmtp.notifip.log": [ "read" ]
 			}
 		},
 		"write": {

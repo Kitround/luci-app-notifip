@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 'use strict';
 'require view';
 'require form';
@@ -140,7 +141,7 @@ return view.extend({
 					E('p', {}, (res && res.result) || _('(no output)')),
 					(res && res.log)
 						? E('pre', {
-							'style': 'max-height:240px;overflow:auto;background:#1d1f21;color:#c5c8c6;padding:8px;font-size:11px'
+							'style': 'max-height:240px;overflow:auto;font-size:11px'
 						}, res.log)
 						: '',
 					E('div', { 'class': 'right' }, [

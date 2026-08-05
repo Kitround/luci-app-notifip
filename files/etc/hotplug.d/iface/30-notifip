@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
 # Trigger NotifIP on WAN-ish ifup events.
 # Catches wan, wan6, wan2, wwan, wwan0, wan_4, wan_v6, mwan*…
 

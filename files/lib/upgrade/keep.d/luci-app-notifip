@@ -1,0 +1,3 @@
+# Keep the observed-IP state and the change history across sysupgrade,
+# otherwise the first check after a firmware upgrade looks like a fresh install.
+/etc/notifip

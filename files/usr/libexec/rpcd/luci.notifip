@@ -1,7 +1,10 @@
 #!/bin/sh
-# rpcd plugin: exposes luci.notifip.{status,log,test_mail,clear_log}
+# SPDX-License-Identifier: Apache-2.0
+# rpcd plugin: exposes luci.notifip.{status,log,test_mail,clear_log,check_now}
 
 . /usr/share/libubox/jshn.sh
+
+MSMTP_LOG=/tmp/msmtp.notifip.log
 
 case "$1" in
 	list)
@@ -25,18 +28,20 @@ case "$1" in
 				out=$(/usr/bin/notifip test-mail 2>&1)
 				rc=$?
 				json_init
-				json_add_int    "code" "$rc"
+				json_add_int    "code"   "$rc"
 				json_add_string "result" "$out"
-				if [ -f /tmp/msmtp.notifip.log ]; then
-					json_add_string "log" "$(tail -n 50 /tmp/msmtp.notifip.log)"
+				if [ -f "$MSMTP_LOG" ]; then
+					json_add_string "log" "$(tail -n 50 "$MSMTP_LOG")"
 				else
 					json_add_string "log" ""
 				fi
 				json_dump
 				;;
 			clear_log)
-				/usr/bin/notifip clear-log >/dev/null
+				/usr/bin/notifip clear-log >/dev/null 2>&1
+				rc=$?
 				json_init
+				json_add_int    "code"   "$rc"
 				json_add_string "result" "OK"
 				json_dump
 				;;
@@ -57,3 +62,5 @@ case "$1" in
 		esac
 		;;
 esac
+
+exit 0

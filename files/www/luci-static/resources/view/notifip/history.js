@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
 'use strict';
 'require view';
 'require rpc';
-'require ui';
+'require dom';
 'require poll';
 
 const callStatus = rpc.declare({
@@ -78,11 +79,6 @@ function renderLog(entries) {
 	].concat(rows));
 }
 
-function replaceContent(node, child) {
-	while (node.firstChild) node.removeChild(node.firstChild);
-	node.appendChild(child);
-}
-
 return view.extend({
 	handleSaveApply: null,
 	handleSave:      null,
@@ -98,8 +94,8 @@ return view.extend({
 
 		function refresh() {
 			return Promise.all([callStatus(), callLog()]).then(function (r) {
-				replaceContent(statusBox, renderStatus(r[0]));
-				replaceContent(logBox,    renderLog(r[1]));
+				dom.content(statusBox, renderStatus(r[0]));
+				dom.content(logBox,    renderLog(r[1]));
 			});
 		}
 

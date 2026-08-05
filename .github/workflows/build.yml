@@ -1,17 +1,48 @@
-name: Build .ipk
+name: Build package
 
 on:
   push:
     tags:
       - 'v*'
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: |
+          set -eux
+          for f in files/usr/bin/notifip \
+                   files/usr/libexec/rpcd/luci.notifip \
+                   files/etc/uci-defaults/99-notifip \
+                   files/etc/hotplug.d/iface/30-notifip; do
+            sh -n "$f"
+          done
+          sed '1d' files/etc/init.d/notifip | sh -n
+      - name: State helpers
+        run: sh tests/state.sh
+
+  build:
+    name: ${{ matrix.label }}
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 24.10 is the last opkg/.ipk release, 25.12 the first apk/.apk one.
+          - arch: x86_64-24.10.8
+            label: OpenWrt 24.10 (.ipk)
+            suffix: ipk
+          - arch: x86_64-25.12.5
+            label: OpenWrt 25.12 (.apk)
+            suffix: apk
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,40 +54,51 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p luci-app-notifip
-          cp -r src/Makefile src/files luci-app-notifip/
+          cp -r src/Makefile src/files src/LICENSE luci-app-notifip/
           rm -rf src
           ls -R luci-app-notifip
 
-      - name: Build .ipk with OpenWrt SDK
+      - name: Build with the OpenWrt SDK
         uses: openwrt/gh-action-sdk@main
         env:
-          ARCH: x86_64-23.05.5
+          ARCH: ${{ matrix.arch }}
           FEEDNAME: notifip_feed
           PACKAGES: luci-app-notifip
           V: s
           NO_REFRESH_CHECK: 1
           NO_SHFMT_CHECK: 1
 
-      - name: Collect .ipk
+      - name: Collect package
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p dist
-          find bin -name 'luci-app-notifip*.ipk' -exec cp {} dist/ \;
-          # Stable-name copy so "/releases/latest/download/luci-app-notifip_all.ipk" works
-          versioned=$(ls dist/luci-app-notifip_*_all.ipk | head -1)
-          cp "$versioned" dist/luci-app-notifip_all.ipk
+          find bin -name "luci-app-notifip*.${{ matrix.suffix }}" -exec cp {} dist/ \;
+          # Stable-name copy so
+          # /releases/latest/download/luci-app-notifip_all.<ext> keeps working.
+          versioned=$(ls dist/luci-app-notifip*.${{ matrix.suffix }} | head -1)
+          cp "$versioned" "dist/luci-app-notifip_all.${{ matrix.suffix }}"
           ls -la dist/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: luci-app-notifip
-          path: dist/*.ipk
+          name: luci-app-notifip-${{ matrix.suffix }}
+          path: dist/*
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.ipk
+          files: dist/*
           generate_release_notes: true
