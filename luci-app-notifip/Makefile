@@ -21,7 +21,7 @@ LUCI_PKGARCH:=all
 LUCI_MAINTAINER:=Kitround <github@krnd.fr>
 LUCI_URL:=https://github.com/Kitround/luci-app-notifip
 
-PKG_VERSION:=1.2.0
+PKG_VERSION:=1.3.0
 PKG_RELEASE:=1
 PKG_MAINTAINER:=Kitround <github@krnd.fr>
 PKG_LICENSE:=Apache-2.0

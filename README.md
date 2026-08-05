@@ -66,13 +66,14 @@ The `Makefile` uses `luci.mk`, so the SDK's LuCI feed has to be installed. It pr
 
 ## Configuration
 
-In LuCI: **Services → NotifIP**.
+In LuCI: **Services → NotifIP**. One page, four tabs, switched client-side.
 
-- **Settings tab**: enable, interval, mode (public / interface), full SMTP config, recipient, **Check now** and **Send test mail** buttons.
-- **Sources tab**: ordered list of URLs queried in "public IP" mode (defaults: `ipify`, `ifconfig.me`, `icanhazip`).
-- **History tab**: current IP, table of changes, "Clear history" button.
+- **General**: enable, interval, mode (public / interface), **Check now** button.
+- **SMTP**: server, port, security, credentials, sender and recipient, **Send test mail** button.
+- **Sources**: ordered list of URLs queried in "public IP" mode (defaults: `ipify`, `ifconfig.me`, `icanhazip`).
+- **History**: current IP, table of changes, "Clear history" button. Refreshes every 30 s.
 
-Save & Apply **before** clicking "Send test mail" — the button uses the saved configuration.
+Save & Apply **before** clicking "Check now" or "Send test mail" — both use the saved configuration.
 
 ## Logs
 
@@ -99,9 +100,7 @@ luci-app-notifip/                                     # repo
 ├── luci-app-notifip/                                 # the package
 │   ├── Makefile
 │   ├── htdocs/luci-static/resources/view/notifip/
-│   │   ├── settings.js                               # Settings tab
-│   │   ├── sources.js                                # Sources tab
-│   │   └── history.js                                # History tab
+│   │   └── main.js                                   # the whole UI, one tabbed form.Map
 │   └── root/
 │       ├── etc/
 │       │   ├── config/notifip                        # UCI defaults (conffile, 0600)
