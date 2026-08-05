@@ -64,31 +64,34 @@ const PaneSection = form.NamedSection.extend({
 	}
 });
 
+// Every child below is passed as an array on purpose. LuCI's dom.append gives an
+// array child text nodes but assigns a bare string to innerHTML, and these values
+// come out of the rpc reply — the state file and the configured source URLs.
 function renderStatus(st) {
 	if (!st || !st.state) {
-		return E('p', {}, _('No data.'));
+		return E('p', {}, [ _('No data.') ]);
 	}
 	const rows = (st.state || []).map(function (row) {
 		return E('tr', { 'class': 'tr' }, [
-			E('td', { 'class': 'td' }, row.key),
-			E('td', { 'class': 'td' }, row.ip),
-			E('td', { 'class': 'td' }, row.since)
+			E('td', { 'class': 'td' }, [ row.key ]),
+			E('td', { 'class': 'td' }, [ row.ip ]),
+			E('td', { 'class': 'td' }, [ row.since ])
 		]);
 	});
 	return E('div', {}, [
 		E('p', {}, [
-			E('strong', {}, _('Enabled: ')), String(st.enabled) + ' — ',
-			E('strong', {}, _('Mode: ')), st.mode + ' — ',
-			E('strong', {}, _('Interval: ')), st.interval + ' min'
+			E('strong', {}, [ _('Enabled: ') ]), String(st.enabled) + ' — ',
+			E('strong', {}, [ _('Mode: ') ]), st.mode + ' — ',
+			E('strong', {}, [ _('Interval: ') ]), st.interval + ' min'
 		]),
 		E('table', { 'class': 'table cbi-section-table' }, [
 			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Source')),
-				E('th', { 'class': 'th' }, _('Current IP')),
-				E('th', { 'class': 'th' }, _('Since'))
+				E('th', { 'class': 'th' }, [ _('Source') ]),
+				E('th', { 'class': 'th' }, [ _('Current IP') ]),
+				E('th', { 'class': 'th' }, [ _('Since') ])
 			])
 		].concat(rows.length ? rows : [E('tr', { 'class': 'tr' }, [
-			E('td', { 'class': 'td', 'colspan': 3 }, _('No IP observed yet.'))
+			E('td', { 'class': 'td', 'colspan': 3 }, [ _('No IP observed yet.') ])
 		])]))
 	]);
 }
@@ -96,26 +99,26 @@ function renderStatus(st) {
 function renderLog(entries) {
 	entries = entries || [];
 	if (!entries.length) {
-		return E('p', {}, _('No change recorded.'));
+		return E('p', {}, [ _('No change recorded.') ]);
 	}
 	const rows = entries.slice().reverse().map(function (e) {
 		return E('tr', { 'class': 'tr' }, [
-			E('td', { 'class': 'td' }, e.ts),
-			E('td', { 'class': 'td' }, e.iface),
-			E('td', { 'class': 'td' }, e.old),
-			E('td', { 'class': 'td' }, e.new),
-			E('td', { 'class': 'td' }, e.notified),
-			E('td', { 'class': 'td', 'style': 'font-size:11px;color:#888' }, e.source)
+			E('td', { 'class': 'td' }, [ e.ts ]),
+			E('td', { 'class': 'td' }, [ e.iface ]),
+			E('td', { 'class': 'td' }, [ e.old ]),
+			E('td', { 'class': 'td' }, [ e.new ]),
+			E('td', { 'class': 'td' }, [ e.notified ]),
+			E('td', { 'class': 'td', 'style': 'font-size:11px;color:#888' }, [ e.source ])
 		]);
 	});
 	return E('table', { 'class': 'table cbi-section-table' }, [
 		E('tr', { 'class': 'tr table-titles' }, [
-			E('th', { 'class': 'th' }, _('Date')),
-			E('th', { 'class': 'th' }, _('Interface')),
-			E('th', { 'class': 'th' }, _('Old IP')),
-			E('th', { 'class': 'th' }, _('New IP')),
-			E('th', { 'class': 'th' }, _('Notified')),
-			E('th', { 'class': 'th' }, _('Source'))
+			E('th', { 'class': 'th' }, [ _('Date') ]),
+			E('th', { 'class': 'th' }, [ _('Interface') ]),
+			E('th', { 'class': 'th' }, [ _('Old IP') ]),
+			E('th', { 'class': 'th' }, [ _('New IP') ]),
+			E('th', { 'class': 'th' }, [ _('Notified') ]),
+			E('th', { 'class': 'th' }, [ _('Source') ])
 		])
 	].concat(rows));
 }
@@ -276,8 +279,8 @@ return view.extend({
 		};
 
 		// --- History: not a UCI form, so it goes in through a PaneSection ---
-		const statusBox = E('div', {}, renderStatus(data[2]));
-		const logBox    = E('div', {}, renderLog(data[3]));
+		const statusBox = E('div', { 'id': 'notifip-status' }, renderStatus(data[2]));
+		const logBox    = E('div', { 'id': 'notifip-log' },    renderLog(data[3]));
 
 		function refresh() {
 			return Promise.all([

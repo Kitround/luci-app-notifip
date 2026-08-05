@@ -37,6 +37,14 @@ jobs:
       - name: state helpers
         run: sh tests/state.sh
 
+      # Loads the LuCI view the way LuCI does and asserts on what it builds.
+      # Neither step above can see the page at all: the tabs reloading the whole
+      # window on every switch went unnoticed until 1.3.0 because nothing checked
+      # the menu shape, and dom.append assigning a bare string to innerHTML is
+      # invisible to any shell test.
+      - name: interface
+        run: node test-ui.js
+
   # Two packages, not one per release. The app is LUCI_PKGARCH:=all -- shell and
   # JavaScript, no ABI, no versioned dependency -- so what actually splits the
   # releases is the container format, and there are only two of them: opkg's .ipk up

@@ -115,6 +115,7 @@ luci-app-notifip/                                     # repo
 │               ├── luci/menu.d/luci-app-notifip.json # LuCI menu entry
 │               └── rpcd/acl.d/luci-app-notifip.json  # rpcd ACL
 ├── tests/state.sh                                    # state helper regression check
+├── test-ui.js                                        # loads the LuCI view headless and asserts on it
 ├── install.sh                                        # ssh-based manual installer
 ├── uninstall.sh                                      # mirror uninstaller
 ├── build-onrouter.sh                                 # generates a self-extracting installer
