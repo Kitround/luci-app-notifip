@@ -12,6 +12,7 @@ LuCI app for OpenWrt that sends an email (SMTP) when the WAN IP changes.
 ## Requirements
 
 - **OpenWrt 21.02 or newer.** Two packages are released: a `.ipk` built on the 21.02 SDK, which installs on every opkg release up to 24.10, and a `.apk` for 25.12 and newer, where apk replaced opkg.
+- The source itself uses nothing newer than 19.07 — but OpenWrt publishes no 19.07 SDK container, so no 19.07 package is built and installing the 21.02 `.ipk` on 19.07 is untested. 19.07 has been end-of-life since 2022.
 - `msmtp`, `curl`, `jsonfilter`, `jshn`, `ca-bundle` — pulled in automatically as package dependencies.
 
 ## Install
