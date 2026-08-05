@@ -11,29 +11,27 @@ LuCI app for OpenWrt that sends an email (SMTP) when the WAN IP changes.
 
 ## Requirements
 
-- **OpenWrt 19.07 or newer**; built and released for **24.10** (`.ipk`) and **25.12** (`.apk`).
+- **OpenWrt 21.02 or newer.** Two packages are released: a `.ipk` built on the 21.02 SDK, which installs on every opkg release up to 24.10, and a `.apk` for 25.12 and newer, where apk replaced opkg.
 - `msmtp`, `curl`, `jsonfilter`, `jshn`, `ca-bundle` — pulled in automatically as package dependencies.
 
 ## Install
 
 ### Recommended — release package from GitHub
 
-CI publishes a noarch `.ipk` and a noarch `.apk` on every tag.
-
 **OpenWrt 25.12 and newer (apk):**
 
 ```sh
-curl -fL -o /tmp/notifip.apk https://github.com/Kitround/luci-app-notifip/releases/latest/download/luci-app-notifip_all.apk
+curl -fL -o /tmp/notifip.apk https://github.com/Kitround/luci-app-notifip/releases/latest/download/luci-app-notifip_openwrt-25.12_all.apk
 apk add --allow-untrusted /tmp/notifip.apk
 rm /tmp/notifip.apk
 ```
 
-**OpenWrt 24.10 and older (opkg):**
+**OpenWrt 21.02 … 24.10 (opkg):**
 
 ```sh
 grep -q "^arch all " /etc/opkg.conf || echo "arch all 100" >> /etc/opkg.conf
 opkg update
-curl -fL -o /tmp/notifip.ipk https://github.com/Kitround/luci-app-notifip/releases/latest/download/luci-app-notifip_all.ipk
+curl -fL -o /tmp/notifip.ipk https://github.com/Kitround/luci-app-notifip/releases/latest/download/luci-app-notifip_openwrt-21.02-24.10_all.ipk
 opkg install /tmp/notifip.ipk
 rm /tmp/notifip.ipk
 ```
@@ -54,7 +52,7 @@ From a clone of this repo on your workstation:
 ./install.sh root@192.168.1.1 -p 2222
 ```
 
-The script copies `files/*` to `/` on the router with the same modes the package would apply, installs missing dependencies (apk or opkg, auto-detected), and enables the service. Useful when iterating on code, but it **overwrites** `/etc/config/notifip` — back up your SMTP settings first.
+The script applies the same mapping the package does (`luci-app-notifip/root/` → `/`, `luci-app-notifip/htdocs/` → `/www/`) with the same modes, installs missing dependencies (apk or opkg, auto-detected), and enables the service. Useful when iterating on code, but it **overwrites** `/etc/config/notifip` — back up your SMTP settings first.
 
 ### Alternative — build the package yourself with the OpenWrt SDK
 
@@ -63,7 +61,7 @@ cp -r luci-app-notifip <openwrt-sdk>/package/luci-app-notifip
 cd <openwrt-sdk> && make package/luci-app-notifip/compile V=s
 ```
 
-The SDK produces a `.ipk` on 19.07 … 24.10 and a `.apk` on 25.12 and newer; the `Makefile` is the same either way.
+The `Makefile` uses `luci.mk`, so the SDK's LuCI feed has to be installed. It produces a `.ipk` up to 24.10 and a `.apk` from 25.12 — same recipe either way.
 
 ## Configuration
 
@@ -93,30 +91,34 @@ cat /tmp/msmtp.notifip.log
 
 ## Project structure
 
+The package lives in its own directory, in the layout `luci.mk` expects: `root/` is copied to `/`, `htdocs/` to `/www/`.
+
 ```
-luci-app-notifip/
-├── Makefile                                          # OpenWrt package (ipk + apk)
+luci-app-notifip/                                     # repo
+├── luci-app-notifip/                                 # the package
+│   ├── Makefile
+│   ├── htdocs/luci-static/resources/view/notifip/
+│   │   ├── settings.js                               # Settings tab
+│   │   ├── sources.js                                # Sources tab
+│   │   └── history.js                                # History tab
+│   └── root/
+│       ├── etc/
+│       │   ├── config/notifip                        # UCI defaults (conffile, 0600)
+│       │   ├── hotplug.d/iface/30-notifip            # WAN ifup trigger
+│       │   ├── init.d/notifip                        # procd service, manages the cron line
+│       │   └── uci-defaults/99-notifip               # post-install fixups
+│       ├── lib/upgrade/keep.d/luci-app-notifip       # keep state across sysupgrade
+│       └── usr/
+│           ├── bin/notifip                           # main shell worker
+│           ├── libexec/rpcd/luci.notifip             # ubus backend for LuCI
+│           └── share/
+│               ├── luci/menu.d/luci-app-notifip.json # LuCI menu entry
+│               └── rpcd/acl.d/luci-app-notifip.json  # rpcd ACL
+├── tests/state.sh                                    # state helper regression check
 ├── install.sh                                        # ssh-based manual installer
 ├── uninstall.sh                                      # mirror uninstaller
 ├── build-onrouter.sh                                 # generates a self-extracting installer
 ├── LICENSE                                           # Apache-2.0
-├── files/
-│   ├── etc/
-│   │   ├── config/notifip                            # UCI defaults (0600)
-│   │   ├── hotplug.d/iface/30-notifip                # WAN ifup trigger
-│   │   ├── init.d/notifip                            # procd service, manages the cron line
-│   │   └── uci-defaults/99-notifip                   # post-install fixups
-│   ├── lib/upgrade/keep.d/luci-app-notifip           # keep state across sysupgrade
-│   ├── usr/
-│   │   ├── bin/notifip                               # main shell worker
-│   │   ├── libexec/rpcd/luci.notifip                 # ubus backend for LuCI
-│   │   └── share/
-│   │       ├── luci/menu.d/luci-app-notifip.json     # LuCI menu entry
-│   │       └── rpcd/acl.d/luci-app-notifip.json      # rpcd ACL
-│   └── www/luci-static/resources/view/notifip/
-│       ├── settings.js                               # Settings tab
-│       ├── sources.js                                # Sources tab
-│       └── history.js                                # History tab
 └── README.md
 ```
 

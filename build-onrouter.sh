@@ -8,7 +8,15 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 OUT=install-on-router.sh
-PAYLOAD=$(cd files && tar -cf - . | gzip -9 | base64)
+
+# Stage the same mapping luci.mk applies: root/ -> /, htdocs/ -> /www/.
+STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
+cp -R luci-app-notifip/root/. "$STAGE/"
+mkdir -p "$STAGE/www"
+cp -R luci-app-notifip/htdocs/. "$STAGE/www/"
+
+PAYLOAD=$(cd "$STAGE" && tar -cf - . | gzip -9 | base64)
 
 cat > "$OUT" <<'HEADER'
 #!/bin/sh

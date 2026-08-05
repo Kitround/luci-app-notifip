@@ -6,7 +6,7 @@
 #   ./install.sh root@192.168.1.1 -p 2222    # custom ssh port
 #
 # What it does:
-#   1. Copies files/* to / on the router via tar over ssh
+#   1. Copies luci-app-notifip/{root,htdocs} to the router via tar over ssh
 #   2. Applies the same modes the .ipk/.apk would (0755 / 0644 / 0600)
 #   3. Installs missing dependencies via apk (OpenWrt >= 25.12) or opkg
 #   4. Runs the uci-defaults script and starts the notifip service
@@ -39,17 +39,20 @@ ssh_cmd() {
 }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-FILES_DIR="$HERE/files"
+PKG_DIR="$HERE/luci-app-notifip"
 
-if [ ! -d "$FILES_DIR" ]; then
-	echo "files/ directory not found at $FILES_DIR" >&2
+if [ ! -d "$PKG_DIR/root" ]; then
+	echo "package directory not found at $PKG_DIR" >&2
 	exit 1
 fi
 
 echo "==> Copying files to $TARGET …"
-# tar | ssh is more reliable than scp -r for preserving paths and modes
-(cd "$FILES_DIR" && tar -cf - .) \
+# Same mapping luci.mk applies: root/ -> /, htdocs/ -> /www/.
+# tar | ssh is more reliable than scp -r for preserving paths and modes.
+(cd "$PKG_DIR/root" && tar -cf - .) \
 	| ssh_cmd "$TARGET" 'tar -xf - -C /'
+(cd "$PKG_DIR/htdocs" && tar -cf - .) \
+	| ssh_cmd "$TARGET" 'mkdir -p /www && tar -xf - -C /www'
 
 echo "==> Setting ownership and modes …"
 ssh_cmd "$TARGET" '

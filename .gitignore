@@ -13,6 +13,7 @@ install-on-router.sh
 
 # Build artefacts
 *.ipk
+*.apk
 /build/
 /bin/
 /dist/

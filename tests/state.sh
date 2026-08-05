@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# Regression check for the state helpers in files/usr/bin/notifip.
+# Regression check for the state helpers in the notifip worker.
 #   sh tests/state.sh
 #
 # The functions are pulled straight out of the worker, so the test cannot
@@ -9,7 +9,7 @@
 
 set -e
 
-WORKER="${1:-$(dirname "$0")/../files/usr/bin/notifip}"
+WORKER="${1:-$(dirname "$0")/../luci-app-notifip/root/usr/bin/notifip}"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
