@@ -19,17 +19,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: shell syntax
+      # shellcheck subsumes `sh -n`: it fails on a parse error too, and it also
+      # catches the quoting and word-splitting bugs that syntax alone never sees.
+      # SC3043: busybox ash does have `local`. SC1091: /lib/functions.sh only
+      # exists on the router. SC2016: install.sh quotes on purpose, those blocks
+      # are expanded by the remote shell.
+      - name: shell
         run: |
           set -eux
-          for f in luci-app-notifip/root/usr/bin/notifip \
-                   luci-app-notifip/root/usr/libexec/rpcd/luci.notifip \
-                   luci-app-notifip/root/etc/uci-defaults/99-notifip \
-                   luci-app-notifip/root/etc/hotplug.d/iface/30-notifip; do
-            sh -n "$f"
-          done
-          # rc.common shebang, not a plain interpreter path
-          sed '1d' luci-app-notifip/root/etc/init.d/notifip | sh -n
+          shellcheck -s sh -e SC3043,SC1091 \
+            luci-app-notifip/root/usr/bin/notifip \
+            luci-app-notifip/root/usr/libexec/rpcd/luci.notifip \
+            luci-app-notifip/root/etc/uci-defaults/99-notifip \
+            luci-app-notifip/root/etc/hotplug.d/iface/30-notifip
+          # rc.common shebang, not a plain interpreter path; START/STOP/USE_PROCD
+          # are the rc.common contract, read by it rather than by this script.
+          sed '1s|.*|#!/bin/sh|' luci-app-notifip/root/etc/init.d/notifip > /tmp/initd.sh
+          shellcheck -s sh -e SC3043,SC1091,SC2034 /tmp/initd.sh
+          shellcheck -e SC2016 install.sh uninstall.sh build-onrouter.sh
 
       # The state helpers, pulled straight out of the worker. They carry the
       # flash-wear guarantee: prune_state runs on every cron tick and must not

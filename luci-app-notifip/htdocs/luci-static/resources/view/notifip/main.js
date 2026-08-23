@@ -64,9 +64,10 @@ const PaneSection = form.NamedSection.extend({
 	}
 });
 
-// Every child below is passed as an array on purpose. LuCI's dom.append gives an
-// array child text nodes but assigns a bare string to innerHTML, and these values
-// come out of the rpc reply — the state file and the configured source URLs.
+// Every E() child in this file is an array on purpose. LuCI's dom.append gives an
+// array child text nodes but assigns a bare string to innerHTML, and much of what
+// is rendered here comes back through rpc: the state file, the configured source
+// URLs, `unknown mode: <uci value>`, and whatever the SMTP server told msmtp.
 function renderStatus(st) {
 	if (!st || !st.state) {
 		return E('p', {}, [ _('No data.') ]);
@@ -180,20 +181,20 @@ return view.extend({
 		o.inputtitle = _('Check now');
 		o.onclick = function () {
 			ui.showModal(_('Checking…'), [
-				E('p', { 'class': 'spinning' }, _('Running notifip check-now…'))
+				E('p', { 'class': 'spinning' }, [ _('Running notifip check-now…') ])
 			]);
 			return callCheckNow().then(function (res) {
 				ui.hideModal();
 				const ok = (res && res.code === 0);
 				ui.showModal(ok ? _('Done') : _('Check failed'), [
-					E('p', {}, (res && res.result) || _('(no output)')),
+					E('p', {}, [ (res && res.result) || _('(no output)') ]),
 					E('div', { 'class': 'right' }, [
-						E('button', { 'class': 'btn cbi-button', 'click': ui.hideModal }, _('Close'))
+						E('button', { 'class': 'btn cbi-button', 'click': ui.hideModal }, [ _('Close') ])
 					])
 				]);
 			}).catch(function (err) {
 				ui.hideModal();
-				ui.addNotification(null, E('p', {}, _('RPC error: ') + err), 'danger');
+				ui.addNotification(null, E('p', {}, [ _('RPC error: ') + err ]), 'danger');
 			});
 		};
 
@@ -235,28 +236,28 @@ return view.extend({
 		o.inputtitle = _('Send test mail');
 		o.onclick = function () {
 			ui.showModal(_('Sending…'), [
-				E('p', { 'class': 'spinning' }, _('msmtp is running…'))
+				E('p', { 'class': 'spinning' }, [ _('msmtp is running…') ])
 			]);
 			return callTestMail().then(function (res) {
 				ui.hideModal();
 				const ok = (res && res.code === 0);
 				ui.showModal(ok ? _('Success') : _('Failure'), [
-					E('p', {}, (res && res.result) || _('(no output)')),
+					E('p', {}, [ (res && res.result) || _('(no output)') ]),
 					(res && res.log)
 						? E('pre', {
 							'style': 'max-height:240px;overflow:auto;font-size:11px'
-						}, res.log)
+						}, [ res.log ])
 						: '',
 					E('div', { 'class': 'right' }, [
 						E('button', {
 							'class': 'btn cbi-button',
 							'click': ui.hideModal
-						}, _('Close'))
+						}, [ _('Close') ])
 					])
 				]);
 			}).catch(function (err) {
 				ui.hideModal();
-				ui.addNotification(null, E('p', {}, _('RPC error: ') + err), 'danger');
+				ui.addNotification(null, E('p', {}, [ _('RPC error: ') + err ]), 'danger');
 			});
 		};
 
@@ -307,7 +308,7 @@ return view.extend({
 					E('button', {
 						'class': 'btn cbi-button cbi-button-action',
 						'click': ui.createHandlerFn(this, refresh)
-					}, _('Refresh')),
+					}, [ _('Refresh') ]),
 					' ',
 					E('button', {
 						'class': 'btn cbi-button cbi-button-remove',
@@ -315,7 +316,7 @@ return view.extend({
 							if (!confirm(_('Clear history?'))) return;
 							return callClear().then(refresh);
 						})
-					}, _('Clear history'))
+					}, [ _('Clear history') ])
 				])
 			];
 		});

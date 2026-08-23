@@ -25,7 +25,6 @@ const RPCD = path.join(__dirname, PKG, 'root/usr/libexec/rpcd/luci.notifip');
 const CONFIG = path.join(__dirname, PKG, 'root/etc/config/notifip');
 
 let passed = 0, failed = 0;
-const pending = [];
 
 function ok(cond, name) {
 	if (cond) { passed++; console.log('ok: ' + name); }
@@ -435,11 +434,40 @@ async function handlerTests() {
 		eq(env.notifications.map(n => n.classes[0]), [ 'danger' ], 'and the error is surfaced');
 	}
 
+	console.log('# the modals never take markup from the reply');
+	{
+		// Both strings are attacker-influenceable: "unknown mode: <value>" carries a
+		// uci value straight back, and the msmtp log carries whatever the SMTP server
+		// answered. dom.append gives an array child text nodes but a bare string
+		// innerHTML, so every modal child has to be an array.
+		const env = page({ rpcReply: () => ({
+			code: 1,
+			result: 'unknown mode: <img src=x onerror=alert(1)>',
+			log: '<script>alert(1)</script>'
+		}) });
+		for (const name of [ '_checknow', '_test' ])
+			await env.optionsSeen.find(o => o.option === name).onclick();
+		const bodies = env.modals.map(m => m.children);
+		eq(findAll(bodies, n => n.rawHtml).map(n => n.tag), [],
+			'no modal node takes a bare string');
+		ok(text(bodies).includes('unknown mode: <img src=x onerror=alert(1)>'),
+			'the message is shown as the text it is');
+		ok(text(bodies).includes('<script>alert(1)</script>'),
+			'and so is the msmtp log');
+	}
+
+	console.log('# an rpc error is reported as text too');
+	{
+		const env = page({ rpcReply: () => Promise.reject(new Error('<img src=x onerror=alert(1)>')) });
+		await env.optionsSeen.find(o => o.option === '_test').onclick();
+		eq(findAll(env.notifications.map(n => n.children), n => n.rawHtml).map(n => n.tag), [],
+			'the notification body is text, not markup');
+	}
+
 	console.log('# Clear history asks first');
 	{
 		const env = page();
 		env.confirmAnswer = false;
-		global.confirm = () => false;
 		const pane = env.tabs.find(n => n.attr['data-tab'] === 'history');
 		const btn = findAll(pane, n => n.tag === 'button').find(b => text(b) === 'Clear history');
 		const r = await btn.attr.click();
@@ -447,7 +475,7 @@ async function handlerTests() {
 	}
 }
 
-handlerTests().then(() => Promise.all(pending)).then(() => {
+handlerTests().then(() => {
 	console.log('');
 	console.log(`${passed} passed, ${failed} failed`);
 	process.exit(failed ? 1 : 0);

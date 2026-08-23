@@ -36,6 +36,9 @@ apply_cron() {
 	sed -i "/$CRON_MATCH/d" "$CRONFILE" 2>/dev/null
 
 	if [ "$enabled" = "1" ]; then
+		# busybox sed -i can preserve a missing final newline, and crond ignores a
+		# line it has glued onto the previous entry.
+		[ -s "$CRONFILE" ] && [ -n "$(tail -c 1 "$CRONFILE")" ] && echo >> "$CRONFILE"
 		local cron_line
 		if [ "$interval" -lt 60 ]; then
 			cron_line="*/$interval * * * * $SCRIPT run $CRON_TAG"

@@ -36,7 +36,9 @@ echo "==> Stopping and disabling notifip on $TARGET …"
 ssh_cmd "$TARGET" '
 	/etc/init.d/notifip stop    2>/dev/null || true
 	/etc/init.d/notifip disable 2>/dev/null || true
-	sed -i "/# notifip/d" /etc/crontabs/root 2>/dev/null || true
+	# Anchored like the init script: a user cron line merely mentioning notifip
+	# in a comment is not ours to delete.
+	sed -i "/# notifip$/d" /etc/crontabs/root 2>/dev/null || true
 	[ -x /etc/init.d/cron ] && /etc/init.d/cron reload 2>/dev/null || true
 '
 

@@ -92,6 +92,10 @@ load_config() {
 	config_list_foreach general iface __add_iface
 	SOURCE_LIST=""
 	config_list_foreach sources url __add_source
+	# A hand-edited config may write `option iface 'wan'` where LuCI writes a
+	# list; config_list_foreach sees nothing at all in that case.
+	[ -n "$IFACE_LIST" ]  || config_get IFACE_LIST  general iface ""
+	[ -n "$SOURCE_LIST" ] || config_get SOURCE_LIST sources url ""
 	config_get SMTP_HOST smtp host ""
 	config_get SMTP_PORT smtp port 587
 	config_get SMTP_SEC  smtp security starttls
@@ -348,11 +352,18 @@ handle_observation() {
 	state_set "$key" "$new_ip"
 }
 
-# Acquire the run mutex non-blocking. Returns 1 if another run holds it.
+# Acquire the run mutex. $1 = attempts, default 1 (non-blocking). Busybox flock
+# has no -w, so waiting is retrying -n. Returns 1 if another run holds it.
 take_lock() {
 	command -v flock >/dev/null 2>&1 || return 0
 	exec 9>"$LOCK"
-	flock -n 9
+	local tries
+	tries="${1:-1}"
+	while ! flock -n 9; do
+		tries=$((tries - 1))
+		[ "$tries" -le 0 ] && return 1
+		sleep 1
+	done
 }
 
 # One detection cycle for the configured MODE. Shared by cmd_run (cron/hotplug)
@@ -429,16 +440,7 @@ cmd_test_mail() {
 	load_config
 	harden_runtime
 	# Serialize against cron/hotplug runs (both write $MSMTPRC).
-	# Busybox flock has no -w (timeout), so retry a few times non-blocking.
-	if command -v flock >/dev/null 2>&1; then
-		exec 9>"$LOCK"
-		local tries=10
-		while ! flock -n 9; do
-			tries=$((tries - 1))
-			[ "$tries" -le 0 ] && { echo "BUSY (another notifip run in progress)"; return 1; }
-			sleep 1
-		done
-	fi
+	take_lock 10 || { echo "BUSY (another notifip run in progress)"; return 1; }
 	local subj="[NotifIP] Test mail"
 	local body
 	body=$(cat <<EOF
